@@ -19,7 +19,7 @@
 	-- Paste your Luarmor loader lines below.
 	-- You can paste either the full Luarmor loadstring line OR just the loader URL.
 	-- Premium keys are detected from status.data.note starting with: premium -
-	local PREMIUM_LUARMOR_LOADSTRING = loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/dc6bc47896ccf56f847dd04383016e7f.lua"))()
+	local PREMIUM_LUARMOR_LOADSTRING = loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/037b7816cee6d69d49f5724d4fe64d11.lua"))()
 	local FREE_LUARMOR_LOADSTRING = loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/51f2550d27b3bdbbb34a8b3adf74e0e6.lua"))()
 
 	local done = false
