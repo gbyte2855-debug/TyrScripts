@@ -10,6 +10,8 @@
 	local playerGui = localPlayer and localPlayer:WaitForChild("PlayerGui")
 	local saveFolder = "Tyr Scripts"
 	local saveFile = saveFolder .. "/luarmor.key"
+		-- Manual-only mode: never auto-fill, auto-run, or auto-validate saved keys.
+		local TYR_SAVE_KEYS = false
 	-- Used only by the pre-auth key checker so invalid keys do not let
 	-- Luarmor continue and kick the player. This is the 32-char script id
 	-- from the Luarmor loader URL / script page.
@@ -57,6 +59,8 @@
 	local envForReset = safeGetGenv()
 	if envForReset then envForReset.script_key = nil end
 	pcall(function() script_key = nil end)
+		pcall(function() _G.TYR_LAST_ROUTE = nil end)
+		pcall(function() _G.TYR_LAST_KEY_NOTE = nil end)
 
 	local function ensureSaveFolder()
 		pcall(function()
@@ -67,6 +71,9 @@
 	end
 
 	local function saveKeyToDisk(key)
+		if not TYR_SAVE_KEYS then
+			return
+		end
 		ensureSaveFolder()
 		pcall(function()
 			if type(writefile) == "function" then
@@ -76,6 +83,12 @@
 	end
 
 	local function loadKeyFromDisk()
+		-- Manual-only mode: do not prefill saved/free/premium keys.
+		-- This guarantees the key GUI appears blank every execution and cannot auto-validate.
+		if not TYR_SAVE_KEYS then
+			return ""
+		end
+
 		local key = ""
 		pcall(function()
 			if type(isfile) == "function" and type(readfile) == "function" and isfile(saveFile) then
@@ -224,7 +237,7 @@
 	keyInput.BorderSizePixel = 0
 	keyInput.ClearTextOnFocus = false
 	keyInput.PlaceholderText = "Enter Key"
-	keyInput.Text = loadKeyFromDisk()
+	keyInput.Text = loadKeyFromDisk() -- blank unless TYR_SAVE_KEYS is manually enabled
 	keyInput.TextColor3 = Color3.fromRGB(245, 245, 245)
 	keyInput.PlaceholderColor3 = Color3.fromRGB(130, 130, 140)
 	keyInput.TextXAlignment = Enum.TextXAlignment.Left
@@ -506,10 +519,10 @@
 	end)
 
 	enterBtn.MouseButton1Click:Connect(function() submitKey() end)
-	keyInput.FocusLost:Connect(function(entered)
-		if entered then submitKey() end
-	end)
-	pcall(function() keyInput:CaptureFocus() end)
+	-- Do not auto-submit on FocusLost/Enter and do not CaptureFocus.
+	-- Some executor/Roblox focus behavior can fire FocusLost unexpectedly,
+	-- which makes a prefilled key look like it auto-validated.
+	-- Manual-only mode means the user must click the Enter button every run.
 
 	while not done do
 		if task and task.wait then
