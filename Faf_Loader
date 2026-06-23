@@ -9,12 +9,18 @@
 	local localPlayer = Players.LocalPlayer
 	local playerGui = localPlayer and localPlayer:WaitForChild("PlayerGui")
 	local saveFolder = "Tyr Scripts"
-	local saveFile = saveFolder .. "/luarmor_premium.key"
+	local saveFile = saveFolder .. "/luarmor.key"
 	-- Used only by the pre-auth key checker so invalid keys do not let
 	-- Luarmor continue and kick the player. This is the 32-char script id
 	-- from the Luarmor loader URL / script page.
 	local TYR_LUARMOR_SCRIPT_ID = "51f2550d27b3bdbbb34a8b3adf74e0e6"
 	local TYR_LUARMOR_KEYCHECK_SDK = "https://sdkapi-public.luarmor.net/library.lua"
+
+	-- Paste your Luarmor loader lines below.
+	-- You can paste either the full Luarmor loadstring line OR just the loader URL.
+	-- Premium keys are detected from status.data.note starting with: premium -
+	local PREMIUM_LUARMOR_LOADSTRING = [[PASTE_PREMIUM_LUARMOR_LOADSTRING_HERE]]
+	local FREE_LUARMOR_LOADSTRING = [[PASTE_FREE_LUARMOR_LOADSTRING_HERE]]
 
 	local done = false
 
@@ -337,6 +343,62 @@
 		return nil
 	end
 
+	local function trimText(text)
+		return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	end
+
+	local function isPremiumNote(note)
+		note = tostring(note or ""):lower()
+		return note:match("^%s*premium%s*%-") ~= nil
+	end
+
+	local function getRouteFromKeyData(keyData)
+		local note = ""
+		if type(keyData) == "table" then
+			note = tostring(keyData.note or "")
+		end
+
+		if isPremiumNote(note) then
+			return "Premium", PREMIUM_LUARMOR_LOADSTRING
+		end
+
+		return "Free", FREE_LUARMOR_LOADSTRING
+	end
+
+	local function prepareLuarmorChunk(routeName, loadstringOrUrl)
+		local source = trimText(loadstringOrUrl)
+		if source == "" or source:find("PASTE_", 1, true) then
+			return nil, routeName .. " Luarmor loadstring is not filled in yet."
+		end
+
+		-- If only the URL was pasted, fetch it with the same safe HTTP getter used by the key checker.
+		if source:match("^https?://") then
+			local fetched = preauthHttpGet(source)
+			if type(fetched) ~= "string" or fetched == "" then
+				return nil, "Could not fetch " .. routeName .. " Luarmor loader."
+			end
+			local chunk, compileErr = loadstring(fetched)
+			if not chunk then
+				return nil, routeName .. " Luarmor loader compile failed: " .. tostring(compileErr)
+			end
+			return chunk
+		end
+
+		-- If the full Luarmor loadstring line was pasted, execute that line directly.
+		local chunk, compileErr = loadstring(source)
+		if not chunk then
+			return nil, routeName .. " Luarmor loadstring compile failed: " .. tostring(compileErr)
+		end
+		return chunk
+	end
+
+	local function setScriptKeyEverywhere(key)
+		script_key = key
+		pcall(function() _G.script_key = key end)
+		local env = safeGetGenv()
+		if env then env.script_key = key end
+	end
+
 	local function checkLuarmorKeyBeforeAuth(key)
 		if type(TYR_LUARMOR_SCRIPT_ID) ~= "string" or TYR_LUARMOR_SCRIPT_ID == "" or TYR_LUARMOR_SCRIPT_ID:find("PASTE") then
 			return false, "Script ID is missing. Contact staff."
@@ -364,7 +426,7 @@
 
 		local code = tostring(status.code or "")
 		if code == "KEY_VALID" then
-			return true
+			return true, nil, status.data
 		elseif code == "KEY_HWID_LOCKED" then
 			return false, "This key is linked to another HWID. Reset HWID first."
 		elseif code == "KEY_EXPIRED" then
@@ -389,30 +451,38 @@
 		keyCheckBusy = true
 		setStatus("Checking key...", Color3.fromRGB(210, 210, 215))
 
-		local okKey, message = checkLuarmorKeyBeforeAuth(key)
+		local okKey, message, keyData = checkLuarmorKeyBeforeAuth(key)
 		if not okKey then
 			keyCheckBusy = false
 			setStatus(message or "Invalid key.", Color3.fromRGB(255, 130, 130))
 			return
 		end
 
+		local routeName, routeLoadstring = getRouteFromKeyData(keyData)
+		setStatus(routeName .. " key detected. Loading...", Color3.fromRGB(140, 225, 150))
+
+		local luarmorChunk, loadErr = prepareLuarmorChunk(routeName, routeLoadstring)
+		if not luarmorChunk then
+			keyCheckBusy = false
+			setStatus(loadErr or "Luarmor loader missing.", Color3.fromRGB(255, 130, 130))
+			return
+		end
+
 		saveKeyToDisk(key)
-		script_key = key
-		pcall(function() _G.script_key = key end)
-		local env = safeGetGenv()
-		if env then env.script_key = key end
+		setScriptKeyEverywhere(key)
 		if task and task.wait then task.wait(0.15) else wait(0.15) end
 		done = true
 		pcall(function() keyGui:Destroy() end)
 
-		loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/b13e6b4d8d5fdd59622f52c5a6bc3912.lua"))()
+		local okRun, runErr = pcall(luarmorChunk)
+		if not okRun then
+			warn("[Tyr Scripts] " .. routeName .. " Luarmor loader failed:", runErr)
+		end
 	end
 
 	exitBtn.MouseButton1Click:Connect(function()
 		done = true
 		pcall(function() keyGui:Destroy() end)
-
-		loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/b13e6b4d8d5fdd59622f52c5a6bc3912.lua"))()
 	end)
 
 	getKeyBtn.MouseButton1Click:Connect(function()
